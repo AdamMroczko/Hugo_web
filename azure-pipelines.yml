@@ -1,0 +1,28 @@
+# Pipeline for deploying a Hugo static website to Azure Blob Storage.
+# Uses Azure Hosted agents.
+# AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY must be defined as pipeline variables.
+
+trigger:
+- main
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  hugo.version: '0.68.0'
+
+steps:
+- script: 'wget -c https://GitHub.com/gohugoio/hugo/releases/download/v$(hugo.version)/hugo_$(hugo.version)_Linux-64bit.deb'
+  displayName: "Download Hugo"
+
+- script: 'sudo dpkg -i hugo_$(hugo.version)_Linux-64bit.deb'
+  displayName: "Install Hugo"
+
+- script: 'hugo --log -v'
+  displayName: 'Generate Blog'
+
+- script: 'hugo deploy --maxDeletes -1'
+  env:
+    AZURE_STORAGE_KEY: $(AZURE_STORAGE_KEY)
+    AZURE_STORAGE_ACCOUNT: $(AZURE_STORAGE_ACCOUNT)
+  displayName: 'Deploy Blog'
