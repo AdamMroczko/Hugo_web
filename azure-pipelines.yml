@@ -1,38 +1,51 @@
 
-trigger:
-  - main
+jobs:
+- job: Hugo_web_job
   
-stages:
-    - stage: 'GenerateHugo'
-      displayName: 'Generate hugo website'
-      jobs:
-        - job:
-          pool:
-            vmImage: ubuntu-latest
-          workspace:
-            clean: all
-          steps:
-          - checkout: self
-            #displayName: 'Checkout repository including submodules'
-            #submodules: true  # true so Hugo theme submodule is checked out
-          - script: wget https://github.com/gohugoio/hugo/releases/download/v0.83.1/hugo_0.83.1_Linux-64bit.deb -O '$(Pipeline.Workspace)/hugo_0.83.1_Linux-64bit.deb'
-            displayName: Download Hugo v0.83.1 Linux x64
-          # 2. Installs Hugo executable
-          - script: sudo dpkg -i $(Pipeline.Workspace)/hugo*.deb
-            displayName: Install Hugo
-          - task: AzureStaticWebApp@0
-            condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
-            inputs:
-              app_location: '/'
-              app_build_command: 'hugo -D'
-              output_location: '/public'
-              azure_static_web_apps_api_token: '$(TOKEN)'
-          
-          - task: AzureStaticWebApp@0
-            condition: ne(variables['Build.SourceBranch'], 'refs/heads/main')
-            inputs:
-              app_location: '/'
-              app_build_command: 'hugo -D'
-              output_location: '/public'
-              azure_static_web_apps_api_token: '$(STAGING_TOKEN)'
-  
+  pool:
+    vmImage: ubuntu-latest
+
+  steps:
+    # 1. Downloads specified version of Hugo executable
+    - script: https://github.com/gohugoio/hugo/releases/download/v0.97.3/hugo_0.97.3_Linux-64bit.deb -O '$(Pipeline.Workspace)/hugo_0.97.3_Linux-64bit.deb'
+      displayName: Download Hugo Linux x64
+    # 2. Installs Hugo executable
+    - script: sudo dpkg -i $(Pipeline.Workspace)/hugo*.deb
+      displayName: Install Hugo
+
+    # 3. Executes Hugo to build site with specified arguments
+    - script: hugo --baseUrl 'https://webstoragehugo.z6.web.core.windows.net/'
+      displayName: Build site with Hugo (include future & expired content)
+    # 4. Executes Hugo `deploy` command to log all files that would be
+    #    added/updated/deleted to the Azure site
+    - script: hugo deploy --maxDeletes -1 --dryRun
+      displayName: Log files added/updated/deleted in site build
+      env:
+        AZURE_STORAGE_ACCOUNT: 'webstoragehugo'
+        AZURE_STORAGE_KEY: 'RZ0Fc0PJW2iI3BYtjhmxzUQD45qUCPmLdL3pQNPTJThEDJQp6QHxWNwCe2ialjwbPPWZQNHqICCOmhG2NeB4jw=='
+    # 5. Copy all relevant built files => staging folder (workaround for archiving)
+    - task: CopyFiles@2
+      displayName: Copy Hugo built site files to staging folder "deploy"
+      inputs:
+        Contents: |
+          config.yml
+          public/**
+          resources/**
+          static/**
+          themes/**          
+        TargetFolder: deploy
+    # 6. Archive (e.g. zip) all built files
+    - task: ArchiveFiles@2
+      displayName: Archive built site files
+      inputs:
+        rootFolderOrFile: ./deploy
+        includeRootFolder: false
+        archiveType: zip
+        archiveFile: $(Pipeline.Workspace)/hugo-build.zip
+        replaceExistingArchive: true
+    # 7. Publish Hugo installer for later stages
+    - publish: $(Pipeline.Workspace)/hugo_Linux-64bit.deb
+      artifact: hugo-installer
+    # 8. Publish built site codebase for later stages
+    - publish: $(Pipeline.Workspace)/hugo-build.zip
+      artifact: build
