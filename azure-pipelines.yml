@@ -2,7 +2,7 @@
 trigger:
   - main
   
-  stages:
+stages:
     - stage: 'GenerateHugo'
       displayName: 'Generate hugo website'
       jobs:
